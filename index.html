@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Podcast</title>
+    <title>Podcast 播放器</title>
     <style>
         :root { --primary: #007AFF; --bg: #f5f5f7; }
         body { background: var(--bg); font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
@@ -14,8 +14,11 @@
         .btns { display: flex; justify-content: center; gap: 15px; margin: 20px 0; }
         button { border: none; background: #e5e5ea; padding: 10px 15px; border-radius: 10px; cursor: pointer; font-weight: bold; }
         .play { background: var(--primary); color: #fff; width: 80px; }
-        .vol { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 12px; }
-        .hint { font-size: 10px; color: #ccc; margin-top: 15px; }
+        /* 將 vol 類別改為通用的控制條樣式 */
+        .slider-ctrl { display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin-bottom: 10px; }
+        .slider-ctrl input { flex: 1; margin-left: 10px; accent-color: var(--primary); }
+        .slider-ctrl span { width: 60px; text-align: left; }
+        .hint { font-size: 11px; color: #aaa; margin-top: 15px; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -40,12 +43,17 @@
         <button id="next">+10s</button>
     </div>
 
-    <div class="vol">
+    <div class="slider-ctrl">
         <span>音量</span>
         <input type="range" id="v-slid" min="0" max="1" step="0.1" value="0.7">
     </div>
 
-    <div class="hint">快捷鍵：空白鍵(暫停) / 左右方向鍵(快進退)</div>
+    <div class="slider-ctrl">
+        <span>速度 <strong id="speed-val">1.0</strong>x</span>
+        <input type="range" id="s-slid" min="0.33" max="3" step="0.01" value="1">
+    </div>
+
+    <div class="hint">快捷鍵：空白鍵(暫停/播放) <br> 左右鍵(快進退) / 上下鍵(調速)</div>
 </div>
 
 <script>
@@ -54,13 +62,17 @@
     const prog = document.getElementById('prog');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
+    
+    // 新增的速度控制元素
+    const sSlid = document.getElementById('s-slid');
+    const speedVal = document.getElementById('speed-val');
+    const vSlid = document.getElementById('v-slid');
 
     let aCtx, analyser, srcNode;
 
     // 播放/暫停功能
     function toggle() {
         if (audio.paused) {
-            // 首次播放時啟動等化器
             if (!aCtx) initVisualizer();
             audio.play().catch(err => {
                 alert("播放失敗！請檢查資料夾中是否有 podcast.mp3 檔案。");
@@ -98,28 +110,57 @@
         frame();
     }
 
+    // 更新速度顯示與音檔屬性的函式
+    function updateSpeed(newSpeed) {
+        // 確保速度在 0.33 到 3 之間
+        newSpeed = Math.max(0.33, Math.min(3, newSpeed));
+        audio.playbackRate = newSpeed;
+        sSlid.value = newSpeed;
+        speedVal.innerText = newSpeed.toFixed(1);
+    }
+
     // 鍵盤事件
     window.onkeydown = (e) => {
-        if (e.code === 'Space') { e.preventDefault(); toggle(); }
+        // 防止空白鍵跟上下鍵觸發網頁預設的捲動行為
+        if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) {
+            e.preventDefault(); 
+        }
+
+        if (e.code === 'Space') toggle();
         if (e.code === 'ArrowRight') audio.currentTime += 10;
         if (e.code === 'ArrowLeft') audio.currentTime -= 10;
+        
+        // 上下鍵調整速度 (每次加減 0.1)
+        if (e.code === 'ArrowUp') {
+            updateSpeed(audio.playbackRate + 0.1);
+        }
+        if (e.code === 'ArrowDown') {
+            updateSpeed(audio.playbackRate - 0.1);
+        }
     };
 
     // 其他控制
     playBtn.onclick = toggle;
     document.getElementById('next').onclick = () => audio.currentTime += 10;
     document.getElementById('back').onclick = () => audio.currentTime -= 10;
-    document.getElementById('v-slid').oninput = (e) => audio.volume = e.target.value;
+    
+    // 音量與速度拖曳事件
+    vSlid.oninput = (e) => audio.volume = e.target.value;
+    sSlid.oninput = (e) => updateSpeed(parseFloat(e.target.value));
 
     // 進度條與時間
     audio.ontimeupdate = () => {
         prog.value = (audio.currentTime / audio.duration) * 100 || 0;
         document.getElementById('cur').innerText = fmt(audio.currentTime);
     };
-    audio.onloadedmetadata = () => document.getElementById('dur').innerText = fmt(audio.duration);
+    audio.onloadedmetadata = () => {
+        document.getElementById('dur').innerText = fmt(audio.duration);
+        audio.volume = vSlid.value; // 確保初始音量與拉桿一致
+    };
     prog.oninput = (e) => audio.currentTime = (e.target.value / 100) * audio.duration;
 
     function fmt(s) {
+        if (isNaN(s)) return "0:00";
         const m = Math.floor(s/60);
         const sec = Math.floor(s%60);
         return `${m}:${sec < 10 ? '0'+sec : sec}`;
