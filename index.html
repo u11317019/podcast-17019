@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podcast</title>
+    <style>
+        :root { --primary: #007AFF; --bg: #f5f5f7; }
+        body { background: var(--bg); font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #fff; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 350px; text-align: center; }
+        canvas { width: 100%; height: 80px; background: #eee; border-radius: 10px; margin-bottom: 15px; }
+        .prog { width: 100%; margin: 15px 0; accent-color: var(--primary); }
+        .time { display: flex; justify-content: space-between; font-size: 12px; color: #888; }
+        .btns { display: flex; justify-content: center; gap: 15px; margin: 20px 0; }
+        button { border: none; background: #e5e5ea; padding: 10px 15px; border-radius: 10px; cursor: pointer; font-weight: bold; }
+        .play { background: var(--primary); color: #fff; width: 80px; }
+        .vol { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 12px; }
+        .hint { font-size: 10px; color: #ccc; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h3>Podcast 播放器</h3>
+    <canvas id="canvas"></canvas>
+    
+    <audio id="audio" src="podcast.mp3"></audio>
+
+    <div class="time-box">
+        <input type="range" id="prog" class="prog" value="0">
+        <div class="time">
+            <span id="cur">0:00</span>
+            <span id="dur">0:00</span>
+        </div>
+    </div>
+
+    <div class="btns">
+        <button id="back">-10s</button>
+        <button id="play" class="play">播放</button>
+        <button id="next">+10s</button>
+    </div>
+
+    <div class="vol">
+        <span>音量</span>
+        <input type="range" id="v-slid" min="0" max="1" step="0.1" value="0.7">
+    </div>
+
+    <div class="hint">快捷鍵：空白鍵(暫停) / 左右方向鍵(快進退)</div>
+</div>
+
+<script>
+    const audio = document.getElementById('audio');
+    const playBtn = document.getElementById('play');
+    const prog = document.getElementById('prog');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let aCtx, analyser, srcNode;
+
+    // 播放/暫停功能
+    function toggle() {
+        if (audio.paused) {
+            // 首次播放時啟動等化器
+            if (!aCtx) initVisualizer();
+            audio.play().catch(err => {
+                alert("播放失敗！請檢查資料夾中是否有 podcast.mp3 檔案。");
+                console.error(err);
+            });
+            playBtn.innerText = "暫停";
+        } else {
+            audio.pause();
+            playBtn.innerText = "播放";
+        }
+    }
+
+    // 初始化等化器
+    function initVisualizer() {
+        aCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = aCtx.createAnalyser();
+        srcNode = aCtx.createMediaElementSource(audio);
+        srcNode.connect(analyser);
+        analyser.connect(aCtx.destination);
+        draw();
+    }
+
+    // 繪製動畫
+    function draw() {
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        function frame() {
+            requestAnimationFrame(frame);
+            analyser.getByteFrequencyData(data);
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            ctx.fillStyle = '#007AFF';
+            data.slice(0, 30).forEach((v, i) => {
+                ctx.fillRect(i * 10, canvas.height - v/3, 7, v/3);
+            });
+        }
+        frame();
+    }
+
+    // 鍵盤事件
+    window.onkeydown = (e) => {
+        if (e.code === 'Space') { e.preventDefault(); toggle(); }
+        if (e.code === 'ArrowRight') audio.currentTime += 10;
+        if (e.code === 'ArrowLeft') audio.currentTime -= 10;
+    };
+
+    // 其他控制
+    playBtn.onclick = toggle;
+    document.getElementById('next').onclick = () => audio.currentTime += 10;
+    document.getElementById('back').onclick = () => audio.currentTime -= 10;
+    document.getElementById('v-slid').oninput = (e) => audio.volume = e.target.value;
+
+    // 進度條與時間
+    audio.ontimeupdate = () => {
+        prog.value = (audio.currentTime / audio.duration) * 100 || 0;
+        document.getElementById('cur').innerText = fmt(audio.currentTime);
+    };
+    audio.onloadedmetadata = () => document.getElementById('dur').innerText = fmt(audio.duration);
+    prog.oninput = (e) => audio.currentTime = (e.target.value / 100) * audio.duration;
+
+    function fmt(s) {
+        const m = Math.floor(s/60);
+        const sec = Math.floor(s%60);
+        return `${m}:${sec < 10 ? '0'+sec : sec}`;
+    }
+
+    // 偵測檔案載入錯誤
+    audio.onerror = () => {
+        alert("找不到音檔！請確認檔名是否為 podcast.mp3 (注意大小寫)。");
+    };
+</script>
+</body>
+</html>
